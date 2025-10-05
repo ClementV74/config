@@ -1,44 +1,43 @@
 #!/bin/sh
+set -e
 
-echo "💻 Installation NvChad Setup (LSP + Auto-Makefile)"
+echo "🚀 Installation et configuration NvChad (LSP + Makefile auto)"
 sleep 1
 
-# 1️⃣ Vérification de NvChad
+# 1️⃣ Vérifie que NvChad est présent
 if [ ! -d "$HOME/.config/nvim" ]; then
-  echo "⚠️ NvChad n'est pas installé, installation en cours..."
+  echo "⚠️ NvChad non détecté — installation..."
+  git clone https://github.com/NvChad/starter ~/.config/nvim
 else
   echo "✅ NvChad déjà présent."
 fi
 
-# 2️⃣ Création du dossier plugins
+# 2️⃣ Crée le dossier plugins s’il n’existe pas
 mkdir -p ~/.config/nvim/lua/plugins
 
-##########################################
-# 3️⃣ Plugin LSP C/Clangd
-##########################################
+# 3️⃣ Ajoute LSP clangd (C/C++)
 cat > ~/.config/nvim/lua/plugins/lsp.lua <<'EOF'
 return {
   {
     "neovim/nvim-lspconfig",
+    enabled = true,
     event = { "BufReadPre", "BufNewFile" },
     config = function()
-      local lspconfig = require("lspconfig")
-
-      -- ✅ Configuration clangd pour C/C++
-      lspconfig.clangd.setup({
+      vim.lsp.config["clangd"] = {
         cmd = { "clangd" },
         filetypes = { "c", "cpp" },
+        root_markers = { "Makefile", "compile_commands.json", ".git" },
         on_attach = function(_, bufnr)
           local opts = { buffer = bufnr, silent = true, noremap = true }
           vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
           vim.keymap.set("n", "gd", vim.lsp.buf.definition, opts)
           vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, opts)
           vim.keymap.set("n", "]d", vim.diagnostic.goto_next, opts)
-          vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts)
         end,
-      })
+      }
 
-      -- 🎨 Apparence diagnostics
+      vim.lsp.enable("clangd")
+
       vim.diagnostic.config({
         virtual_text = { prefix = "●", spacing = 4 },
         float = { border = "rounded", source = "always" },
@@ -50,68 +49,35 @@ return {
 }
 EOF
 
-##########################################
-# 4️⃣ Plugin Auto-Makefile 
-##########################################
+# 4️⃣ Ajoute l’auto Makefile generator
 cat > ~/.config/nvim/lua/plugins/makegen.lua <<'EOF'
 return {
   {
-    "feegaffe/makegen",
-    lazy = false,
+    "nvim-lua/plenary.nvim",
+    event = "VeryLazy",
     config = function()
       vim.api.nvim_create_user_command("MakeGen", function()
-        local cwd = vim.fn.getcwd()
         local files = vim.fn.glob("*.c", false, true)
         if #files == 0 then
-          print("❌ Aucun fichier .c trouvé dans " .. cwd)
+          print("🚫 Aucun fichier .c trouvé")
           return
         end
 
-        local project_name = vim.fn.fnamemodify(cwd, ":t")
-        local out_name = project_name ~= "" and project_name or "program"
-
-        local content = string.format([[
-# Auto-generated Makefile by NvChad setup
-CC      = gcc
-CFLAGS  = -std=c99 -pedantic -Werror -Wall -Wextra -Wvla
-SRC     = %s
-OBJ     = $(SRC:.c=.o)
-NAME    = %s
-
-all: $(NAME)
-
-$(NAME): $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) -o $(NAME)
-
-clean:
-	rm -f $(OBJ)
-
-fclean: clean
-	rm -f $(NAME)
-
-re: fclean all
-
-.PHONY: all clean fclean re
-]], table.concat(files, " "), out_name)
-
-        local path = cwd .. "/Makefile"
-        local f = io.open(path, "w")
-        if f then
-          f:write(content)
-          f:close()
-          print("✅ Makefile créé : " .. path)
-        else
-          print("⚠️ Impossible d’écrire le Makefile.")
-        end
+        local makefile = io.open("Makefile", "w")
+        makefile:write("CC = gcc\nCFLAGS = -Wall -Wextra -Werror -std=c99\n")
+        makefile:write("SRC = " .. table.concat(files, " ") .. "\n")
+        makefile:write("OBJ = $(SRC:.c=.o)\nNAME = a.out\n\n")
+        makefile:write("all: $(NAME)\n\n$(NAME): $(OBJ)\n\t$(CC) $(CFLAGS) -o $(NAME) $(OBJ)\n\n")
+        makefile:write("clean:\n\trm -f $(OBJ)\n\nfclean: clean\n\trm -f $(NAME)\n\nre: fclean all\n")
+        makefile:close()
+        print("✅ Makefile généré automatiquement !")
       end, {})
     end,
   },
 }
 EOF
 
-##########################################
-# 5️⃣ Installation clangd
-##########################################
+# 5️⃣ Installation de clangd (si manquant)
 if ! command -v clangd >/dev/null 2>&1; then
   echo "🔧 Installation de clangd..."
   if command -v nix-env >/dev/null 2>&1; then
@@ -119,21 +85,19 @@ if ! command -v clangd >/dev/null 2>&1; then
   elif command -v apt >/dev/null 2>&1; then
     sudo apt install clangd -y
   else
-    echo "⚠️ Installe clangd manuellement."
+    echo "⚠️ clangd non trouvé, installe-le manuellement."
   fi
 else
   echo "✅ clangd déjà présent."
 fi
 
-##########################################
-# 6️⃣ Synchro plugins NvChad
-##########################################
+# 6️⃣ Sync plugins
 echo "🔁 Synchronisation NvChad..."
-nvim --headless "+Lazy sync" +qa
+nvim --headless "+Lazy! sync" +qa || echo "⚠️ Lazy sync sauté (pas critique)"
 
-echo "✅ Configuration complète terminée !"
 echo ""
-echo "➡️ Tu peux tester maintenant :"
-echo "  1. Ouvre un .c : nvim main.c"
-echo "  2. Vérifie le LSP : :LspInfo → doit dire 'clangd (active)'"
-echo "  3. Génère un Makefile : :MakeGen"
+echo "🎉 Setup complet !"
+echo "→ Teste :"
+echo "  nvim main.c"
+echo "  :LspInfo  (clangd doit être actif)"
+echo "  :MakeGen  (pour générer un Makefile)"
