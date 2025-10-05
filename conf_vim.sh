@@ -29,9 +29,8 @@ return {
     "neovim/nvim-lspconfig",
     event = { "BufReadPre", "BufNewFile" },
     config = function()
-      local lspconfig = require("lspconfig")
-
-      lspconfig.clangd.setup({
+      -- ✅ Nouvelle API (Neovim 0.11+)
+      vim.lsp.config["clangd"] = {
         cmd = { "clangd" },
         filetypes = { "c", "cpp" },
         root_markers = { "Makefile", ".git", "compile_commands.json" },
@@ -42,8 +41,12 @@ return {
           vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, opts)
           vim.keymap.set("n", "]d", vim.diagnostic.goto_next, opts)
         end,
-      })
+      }
 
+      -- Activation du serveur LSP clangd
+      vim.lsp.enable("clangd")
+
+      -- 🎨 Apparence diagnostics
       vim.diagnostic.config({
         virtual_text = { prefix = "●", spacing = 4 },
         float = { border = "rounded", source = "always" },
@@ -53,6 +56,7 @@ return {
     end,
   },
 }
+
 EOF
 
 # 6️⃣ Générer l’auto-Makefile
